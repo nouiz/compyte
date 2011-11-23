@@ -306,11 +306,11 @@ def test_copy_view():
 
     for shp in [(5,), (6, 7), (4, 8, 9), (1, 8, 9)]:
         for dtype in dtypes_all:
-            for offseted in [False, True]:
+            for offseted in [True, False]:
                 # order1 is the order of the original data
                 for order1 in ['c', 'f']:
                     # order2 is the order wanted after copy
-                    for order2 in ['c', 'f']:
+                    for order2 in ['f', 'c']:
                         print shp, dtype, offseted, order1, order2
                         #TODO test copy unbroadcast!
                         a, b = gen_gpu_nd_array(shp, dtype, offseted,

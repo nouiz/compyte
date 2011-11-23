@@ -316,17 +316,17 @@ class ElemwiseAlgo(object):
         # TODO: make a special case for broadcasting, to store the
         # data in shared memory.
 
-        nd = outputs[0].type.ndim
+        max_nd = outputs[0].type.ndim
         nb_inputs = len(inputs)
         nb_outputs = len(outputs)
         d = dict()
         # input_params and output_params go into the function
         # declaration/definition
-        input_params = ", ".join("const %s * i%i_data, const int * i%i_str" % (
-                dtype_to_ctype(inputs[i].dtype), ipos, ipos)
+        input_params = ", ".join("const %s * i%i_data, ssize_t * i%i_str" % (
+                dtype_to_ctype(inputs[ipos].dtype), ipos, ipos)
                                  for ipos in xrange(len(inputs)))
-        output_params = ", ".join("%s * o%i_data, const int * o%i_str" % (
-                dtype_to_ctype(outputs[i].dtype),
+        output_params = ", ".join("%s * o%i_data, ssize_t * o%i_str" % (
+                dtype_to_ctype(outputs[ipos].dtype),
                 ipos, ipos)
                                   for ipos in xrange(len(outputs)))
 
@@ -336,12 +336,10 @@ class ElemwiseAlgo(object):
         output_args = ", ".join("o%i_data, o%i_str" % (ipos, ipos)
                 for ipos in xrange(len(outputs)))
 
-        prod_dims = '*'.join(["dims[%i]" % di for di in xrange(nd)] + ['1'])
-
         sio = StringIO.StringIO()
         print >> sio, """
-        static void can_collapse_%(nodename)s(int nd, const int * dims,
-                                              const int * strides,
+        static void can_collapse_%(nodename)s(int nd, ssize_t * dims,
+                                              ssize_t * strides,
                                               int collapse[])
         {
             //can we collapse dims[i] and dims[i-1]
@@ -355,53 +353,53 @@ class ElemwiseAlgo(object):
         """ % locals()
         print >> sio, """
         static int callkernel_%(nodename)s(unsigned int numEls, const int d,
-            const int * dims,
+            ssize_t * dims,
             %(input_params)s,
             %(output_params)s)
         {
-            numEls = %(prod_dims)s;
         """ % locals()
         if self.verbose:
             print >> sio, """
-                std::cerr << "calling kernel_%(nodename)s     w numEls" << numEls << " dims"<< d << "\\n";
+                std::cerr << "callkernel_%(nodename)s     w numEls=" << numEls << " dims="<< d << "\\n";
             """ % locals()
-            print >> sio, 'std::cerr << ' + " << ' ' <<  ".join(['"  "']+list("dims[%i]"%di
-                for di in xrange(nd)) + ["'\\n';"])
+            print >> sio, 'for(int i=0; i < d; ++i) std::cerr << " " << dims[i];'
+            print >> sio, 'std::cerr << "\\n";'
         if self.verbose > 1:
             for ipos in xrange(len(inputs)):
                 print >> sio, """
-                std::cerr << "   %(ipos)s data strides" <<
-                """ % locals() + " << ' ' <<  ".join(["i%s_data" % ipos]
-                + list("i%s_str[%i]" % (ipos, di)
-                       for di in xrange(nd))) + ''' << "\\n"; '''
+                std::cerr << "   %(ipos)s data strides " <<
+                """ % locals() + "i%s_data;" % ipos
+                print >> sio, 'for(int i=0; i < d; ++i) std::cerr << " " << i%s_str[i];' % ipos
+                print >> sio, 'std::cerr << "\\n";'
 
             for ipos in xrange(len(outputs)):
                 print >> sio, """
-                std::cerr << "   %(ipos)s data strides" <<
-                """ % locals() + " << ' ' <<  ".join(["o%s_data" % ipos]
-                    + list("o%s_str[%i]" % (ipos, di)
-                           for di in xrange(nd))) + ''' << "\\n"; '''
+                std::cerr << "   %(ipos)s data strides " <<
+                """ % locals() + "o%s_data;" % ipos
+                print >> sio, 'for(int i=0; i < d; ++i) std::cerr << " " << o%s_str[i];' % ipos
+                print >> sio, 'std::cerr << "\\n";'
+
     # collapse dimension that are broadcast in all inputs.
     # need to be done before contiguous collapse as it will break it.
     # do the dimensions and the strides
         print >> sio, """
-        int local_dims[%(nd)s];
-        int local_str[%(nb_inputs)s][%(nd)s];
-        int local_ostr[%(nb_inputs)s][%(nd)s];
-        int nd_collapse = %(nd)s;
-        for(int i=0;i<%(nd)s;i++){//init new dim
+        ssize_t local_dims[%(max_nd)s];
+        ssize_t local_str[%(nb_inputs)s][%(max_nd)s];
+        ssize_t local_ostr[%(nb_inputs)s][%(max_nd)s];
+        int nd_collapse = d;
+        for(int i=0;i < d;i++){//init new dim
           local_dims[i]=dims[i];
         }
         """ % locals()
         for ipos in xrange(len(inputs)):
             print >> sio, """
-            for(int i=0;i<%(nd)s;i++){//init new strides
+            for(int i=0;i<d;i++){//init new strides
               local_str[%(ipos)s][i]=i%(ipos)s_str[i];
             }
             """ % locals()
         for ipos in xrange(len(outputs)):
             print >> sio, """
-            for(int i=0;i<%(nd)s;i++){//init new strides
+            for(int i=0;i<d;i++){//init new strides
               local_ostr[%(ipos)s][i]=o%(ipos)s_str[i];
             }
             """ % locals()
@@ -409,14 +407,18 @@ class ElemwiseAlgo(object):
             print >>sio, 'std::cerr <<"before broadcast collapse\\n";'
             print >>sio, 'std::cerr<< "nd_collapse "<< nd_collapse << "\\n"; '
             print >> sio, 'std::cerr << "local_dims";'
-            for d in xrange(nd):
-                print >> sio, 'std::cerr << " " << local_dims[%(d)s]; ' % locals()
+            print >> sio, 'for(int i=0; i < d; ++i) std::cerr << " " << local_dims[i]; ' % locals()
             print >> sio, 'std::cerr << "\\n";'
 
             for ipos in xrange(len(inputs)):
-                print >> sio, 'std::cerr << " local_str inputs %(ipos)s: " <<' % locals()+' << " " << '.join(["local_str[%(ipos)s][%(x)s]"%locals() for x in range(nd)])+'<<"\\n";'
+                print >> sio, 'std::cerr << "local_str inputs %(ipos)s: ";' % locals()
+                print >> sio, 'for(int i=0; i < d; ++i) std::cerr << " " << local_str[%(ipos)s][i]; ' % locals()
+                print >> sio, 'std::cerr << "\\n";'
+
             for ipos in xrange(len(outputs)):
-                print >> sio, 'std::cerr << " local_ostr inputs %(ipos)s: " <<' % locals()+' << " " << '.join(["local_ostr[%(ipos)s][%(x)s]"%locals() for x in range(nd)])+'<<"\\n";'
+                print >> sio, 'std::cerr << "local_ostr inputs %(ipos)s: ";' % locals()
+                print >> sio, 'for(int i=0; i < d; ++i) std::cerr << " " << local_ostr[%(ipos)s][i]; ' % locals()
+                print >> sio, 'std::cerr << "\\n";'
 
         print >> sio, """
         for(int id=0;id<nd_collapse;id++){
@@ -450,22 +452,26 @@ class ElemwiseAlgo(object):
             print >>sio, 'std::cerr <<"after broadcast collapse\\n";'
             print >>sio, 'std::cerr<< "nd_collapse "<< nd_collapse << "\\n"; '
             print >> sio, 'std::cerr << "local_dims";'
-            for d in xrange(nd):
-                print >> sio, 'std::cerr << " " << local_dims[%(d)s]; ' % locals()
+            print >> sio, 'for(int i=0; i < d; ++i) std::cerr << " " << local_dims[i]; ' % locals()
             print >> sio, 'std::cerr << "\\n";'
 
             for ipos in xrange(len(inputs)):
-                print >> sio, 'std::cerr << " local_str %(ipos)s: " <<' % locals()+' << " " << '.join(["local_str[%(ipos)s][%(x)s]"%locals() for x in range(nd)])+'<<"\\n";'
+                print >> sio, 'std::cerr << " local_str %(ipos)s: ";' % locals()
+                print >> sio, 'for(int i=0; i < d; ++i) std::cerr << " " << local_str[%(ipos)s][i]; ' % locals()
+                print >> sio, 'std::cerr << "\\n";'
+
             for ipos in xrange(len(outputs)):
-                print >> sio, 'std::cerr << " local_ostr %(ipos)s: " <<' % locals()+' << " " << '.join(["local_ostr[%(ipos)s][%(x)s]"%locals() for x in range(nd)])+'<<"\\n";'
+                print >> sio, 'std::cerr << " local_ostr %(ipos)s: ";' % locals()
+                print >> sio, 'for(int i=0; i < d; ++i) std::cerr << " " << local_ostr[%(ipos)s][i]; ' % locals()
+                print >> sio, 'std::cerr << "\\n";'
     # collapse contiguous dimensions (ignoring scalars, generic version(collapse any dimensions, right, left, middle))
     # this is a good idea because we make less index calculation in the gpu.
 
-        print >> sio, "int nd_collapse_[%(nd)s] = {" % locals() +','.join(['1' for x in range(nd)]) +"};"
+        print >> sio, "int nd_collapse_[%(max_nd)s] = {" % locals() +','.join(['1' for x in range(max_nd)]) +"};"
         for ipos in xrange(len(inputs)):
             if not _logical_scalar(inputs[ipos]):
                 print >> sio, """
-                    int nd_collapse_%(ipos)s[%(nd)s] = {""" % locals() +','.join(['1' for x in range(nd)]) +"};"
+                    int nd_collapse_%(ipos)s[%(max_nd)s] = {""" % locals() +','.join(['1' for x in range(max_nd)]) +"};"
                 print >> sio, """
 can_collapse_%(nodename)s(nd_collapse, local_dims, local_str[%(ipos)s], nd_collapse_%(ipos)s);
 for(int i=0;i<nd_collapse;i++){
@@ -479,15 +485,13 @@ nd_collapse_[i]=0;
                     """ % locals()
                     print >>sio, ' << " " << '.join(
                         ["nd_collapse_%(ipos)s[" % locals() + str(i) + "]"
-                         for i in range(nd)])
+                         for i in range(max_nd)])
                     print >>sio, '<< "\\n";'
                     print >>sio, """
-                    std::cerr<< "nd_collapse_ "<<
+                    std::cerr<< "nd_collapse_ ";
                     """ % locals()
-                    print >>sio, ' << " " << '.join(
-                        ["nd_collapse_[" % locals() + str(i) + "]"
-                         for i in range(nd)])
-                    print >>sio, '<< "\\n";'
+                    print >> sio, 'for(int i=0; i < d; ++i) std::cerr << " " << nd_collapse_[i]; ' % locals()
+                    print >> sio, 'std::cerr << "\\n";'
 
     # update the local stride.
         for ipos in xrange(len(inputs)):
@@ -541,22 +545,19 @@ nd_collapse_[i]=0;
 
         if self.verbose:
             print >> sio, 'std::cerr <<"after can_collapse\\n";'
-            print >> sio, """std::cerr << "nd_collapse " << nd_collapse << "\\n"; """  % locals()
+            print >> sio, """std::cerr << "nd_collapse " << nd_collapse << "\\n"; """
         if self.verbose > 1:
-            for d in xrange(nd):
-                print >> sio, 'std::cerr << " " << local_dims[%(d)s]; ' % locals()
+            print >> sio, 'for(int i=0; i<d; i++) std::cerr << " " << local_dims[i]; '
             print >> sio, 'std::cerr << "\\n";'
 
             for ipos in xrange(len(inputs)):
-                print >> sio, ('std::cerr << " local_str %(ipos)s: " <<' %
-                               locals() + ' << " " << '.join(
-                        ["local_str[%(ipos)s][%(x)s]" % locals()
-                         for x in range(nd)]) + '<<"\\n";')
+                print >> sio, 'std::cerr << "local_str inputs %(ipos)s: ";' % locals()
+                print >> sio, 'for(int i=0; i < d; ++i) std::cerr << " " << local_str[%(ipos)s][i]; ' % locals()
+                print >> sio, 'std::cerr << "\\n";'
             for ipos in xrange(len(outputs)):
-                print >> sio, ('std::cerr << " local_ostr %(ipos)s: " <<' %
-                               locals() + ' << " " << '.join(
-                        ["local_ostr[%(ipos)s][%(x)s]" % locals()
-                         for x in range(nd)]) + '<<"\\n";')
+                print >> sio, 'std::cerr << "local_ostr inputs %(ipos)s: ";' % locals()
+                print >> sio, 'for(int i=0; i < d; ++i) std::cerr << " " << local_ostr[%(ipos)s][i]; ' % locals()
+                print >> sio, 'std::cerr << "\\n";'
 
         def launch_Ccontiguous(nodename, scalar_op):
             kernel_call_args = ["numEls"]
@@ -564,8 +565,9 @@ nd_collapse_[i]=0;
                 kernel_call_args.append("i%i_data" % ipos)
             for ipos in xrange(len(outputs)):
                 kernel_call_args.append("o%i_data" % ipos)
+            toprint = 'printf("  gpu params: %s=%%p\\n",' % "=%p ".join(kernel_call_args)
             kernel_call_args = ", ".join(kernel_call_args)
-            verb = ""
+            toprint += kernel_call_args + ");"
             if self.verbose:
                 verb = 'std::cerr << "   Running ccontiguous version\\n";'
             print >> sio, """
@@ -574,13 +576,13 @@ nd_collapse_[i]=0;
 
                 //next start adding multiprocessors
                 int n_blocks = std::min(numEls/threads_per_block + (numEls %% threads_per_block?1:0), (unsigned int)30); // UP TO NUMBER OF MULTIPROCESSORS
-
                 // next start adding more warps per multiprocessor
                 if (threads_per_block * n_blocks < numEls)
                     threads_per_block = std::min(numEls/n_blocks, (unsigned int)NUM_VECTOR_OP_THREADS_PER_BLOCK);
                 kernel_%(nodename)s_Ccontiguous<<<n_blocks, threads_per_block>>>(%(kernel_call_args)s);
 
-                //std::cerr << "calling callkernel returned\\n";
+                std::cerr << "gpu call returned\\n";
+                 %(toprint)s
                 """  % locals()
 
             print >> sio, """
@@ -656,13 +658,13 @@ nd_collapse_[i]=0;
                 """  % locals()
 
         print >> sio, "if(numEls==0) return 0;"
-        print >> sio, "switch (nd_collapse==0?0:min(%(nd)s,nd_collapse)) {"%locals()
+        print >> sio, "switch (nd_collapse==0?0:min(d, nd_collapse)) {" % locals()
         print >> sio, "case 0: {"
-        launch_Ccontiguous(nodename, scalar_op)
+        launch_Ccontiguous(nodename, self.scalar_op)
         print >> sio, "        } break;"
-        for i in range(1, nd + 1):
+        for i in range(1, max_nd + 1):
             print >> sio, "case " + str(i) + ": {"
-            launch_General(nodename, scalar_op, i)
+            launch_General(nodename, self.scalar_op, i)
             print >> sio, "        } break;"
 
         print >> sio, "}"  # end case
@@ -675,12 +677,102 @@ nd_collapse_[i]=0;
     def c_support_code_apply(self, inputs, outputs, nodename):
         nd = outputs[0].type.ndim
         return "".join(
-            CLUDA_PREAMBLE,
-            [self.c_src_kernel(inputs, outputs, nodename, x)
+            [CLUDA_PREAMBLE] +
+            [self.c_src_kernel(inputs, outputs, nodename, x, static='')
              for x in range(1, nd + 1)] +
-            [self.c_src_kernel_Ccontiguous(inputs, outputs, nodename),
+            [self.c_src_kernel_Ccontiguous(inputs, outputs,
+                                           nodename, static=''),
              self.c_src_callkernel(inputs, outputs, nodename),
              ])
+
+    @staticmethod
+    def pygpu_language_copy_cuda(dtype):
+        algo = ElemwiseAlgo(scalar.identity)
+        algo.verbose = 4
+        nd = min(numpy.MAXDIMS, 19)
+        type = TensorType(dtype,
+                          (False,) * nd)
+        sub = dict(fail='return NULL;')
+        c_code = """
+#include <Python.h>
+#include <iostream>
+#include <numpy/arrayobject.h>
+#include "pygpu_ndarray_object.h"
+#include "pygpu_language.h"
+#include "pygpu_ndarray.h"
+//Max number of blocks to launch.
+//TODO: Should be read from device properties.
+#define NUM_VECTOR_OP_BLOCKS                4096
+//TODO: Should be read from device properties.
+#define NUM_VECTOR_OP_THREADS_PER_BLOCK     256
+#define CNDA_THREAD_SYNC cudaThreadSynchronize()
+"""
+        c_code += algo.c_support_code()
+
+        # Add kernel
+        c_code += algo.c_support_code_apply([type()], [type()], "nodename")
+        # Call the kernel
+        c_code += ("int PyGpuNdArray_CopyFromPyGpuNdArray2("
+                   "PyGpuNdArrayObject * self, PyGpuNdArrayObject * other,"
+                   "bool unbroadcast){"
+                   'printf("PyGpuNdArray_CopyFromPyGpuNdArray2 start\\n");'
+                   )
+        c_code += algo.c_code([type()], [type()],
+                              "nodename",
+                              ["other"], ["self"], sub)
+        c_code += '\nprintf("PyGpuNdArray_CopyFromPyGpuNdArray2 end\\n");'
+        c_code += "return 0; }"
+        return c_code
+
+    @staticmethod
+    def pygpu_language_copy_opencl(dtype):
+        algo = ElemwiseAlgo(scalar.identity)
+        nd = numpy.MAXDIMS
+        type = TensorType(dtype,
+                          (False,) * nd)
+        sub = dict(fail='return -1;')
+        c_code = """
+#include <Python.h>
+#include <iostream>
+#include <numpy/arrayobject.h>
+#include "pygpu_ndarray_object.h"
+#include "pygpu_language.h"
+#include "pygpu_ndarray.h"
+//Max number of blocks to launch.
+//TODO: Should be read from device properties.
+#define NUM_VECTOR_OP_BLOCKS                4096
+//TODO: Should be read from device properties.
+#define NUM_VECTOR_OP_THREADS_PER_BLOCK     256
+#define CNDA_THREAD_SYNC cudaThreadSynchronize()
+"""
+        c_code += algo.c_support_code()
+
+        # Add kernel
+        #c_code += algo.c_support_code_apply([type()], [type()], "nodename")
+        nodename = "nodename"
+        inputs = [type()]
+        outputs = [type()]
+        c_code = CLUDA_PREAMBLE
+        for x in range(1, nd + 1):
+            c_code += 'const char * kernel_%dd = "' % x
+            c_code += algo.c_src_kernel(inputs, outputs, nodename, x,
+                                     static="").replace("\n", "\\n")
+            c_code += '";\n'
+        c_code += 'const char * kernel_contiguous = "'
+        c_code += algo.c_src_kernel_Ccontiguous(inputs, outputs, nodename,
+                                             static="").replace("\n", "\\n")
+        c_code += '";\n'
+        c_code += algo.c_src_callkernel(inputs, outputs, nodename)
+
+        # Call the kernel
+        c_code += ("int PyGpuNdArray_CopyFromPyGpuNdArray("
+                   "PyGpuNdArrayObject * self, PyGpuNdArrayObject * other,"
+                   "bool unbroadcast){")
+        c_code += algo.c_code([type()], [type()],
+                              "nodename",
+                              ["other"], ["self"], sub)
+        c_code += "return 0; }"
+        return c_code
 
     def c_code(self, ninputs, noutputs, nodename, inputs, outputs, sub):
         d = dict(sub)
@@ -698,7 +790,7 @@ nd_collapse_[i]=0;
         //standard elemwise size checks
             """ % locals()
         print >> sio, """
-        int dims[%(nd)s] = {%(initial_dims)s};
+        ssize_t dims[%(nd)s] = {%(initial_dims)s};
         """ % locals()
 
         #check that all inputs have valid dimensions
@@ -721,20 +813,21 @@ nd_collapse_[i]=0;
                 continue
             print >> sio, """
         //std::cerr << "C_CODE %(opname)s checking input %(iname)s\\n";
-        if (%(nd)s != %(iname)s->nd)
+        if (%(nd)s < PyGpuNdArray_NDIM(%(iname)s))
         {
-            PyErr_Format(PyExc_TypeError, "need %(nd)s dims, not %%i", %(iname)s->nd);
+            PyErr_Format(PyExc_TypeError, "need %(nd)s dims or less, not %%i",
+                         PyGpuNdArray_NDIM(%(iname)s));
             %(fail)s;
         }
-        for (int i = 0; i< %(nd)s; ++i)
+        for (int i = 0; i< PyGpuNdArray_NDIM(%(iname)s); ++i)
         {
-            dims[i] = (dims[i] == 1) ? CudaNdarray_HOST_DIMS(%(iname)s)[i] : dims[i];
-            if ((!(broadcasts_%(iname)s[i] && CudaNdarray_HOST_DIMS(%(iname)s)[i] == 1))&& (dims[i] != CudaNdarray_HOST_DIMS(%(iname)s)[i]))
+            dims[i] = (dims[i] == 1) ? PyGpuNdArray_DIMS(%(iname)s)[i] : dims[i];
+            if ((!(broadcasts_%(iname)s[i] && PyGpuNdArray_DIMS(%(iname)s)[i] == 1))&& (dims[i] != PyGpuNdArray_DIMS(%(iname)s)[i]))
             {
                 //std::cerr << "C_CODE %(opname)s checking input %(iname)s failed\\n";
-                PyErr_Format(PyExc_ValueError, "GpuElemwise. Input dimension mis-match. One of your inputs has shape[%%i] == %%i, but the output's size on that axis is %%i.",
+                PyErr_Format(PyExc_ValueError, "GpuElemwise. Input dimension mis-match. One of your inputs has shape[%%i] == %%zi, but the output's size on that axis is %%zi.",
                     i,
-                    CudaNdarray_HOST_DIMS(%(iname)s)[i],
+                    PyGpuNdArray_DIMS(%(iname)s)[i],
                     dims[i]
                     );
                 %(fail)s;
@@ -747,8 +840,8 @@ nd_collapse_[i]=0;
         for idx, oname in enumerate(outputs):
             if idx not in self.inplace_pattern.keys():
                 print >> sio, """
-        for (int i = 0; (i< %(nd)s) && (%(oname)s); ++i) {
-            if (dims[i] != CudaNdarray_HOST_DIMS(%(oname)s)[i])
+        for (int i = 0; (i< PyGpuNdArray_NDIM(%(oname)s)) && (%(oname)s); ++i) {
+            if (dims[i] != PyGpuNdArray_DIMS(%(oname)s)[i])
             {
                 Py_DECREF(%(oname)s);
                 %(oname)s = NULL;
@@ -756,13 +849,13 @@ nd_collapse_[i]=0;
         }
         if (NULL == %(oname)s)
         {
-            %(oname)s = (CudaNdarray*)CudaNdarray_New();
+            %(oname)s = (PyGpuNdArrayObject*) PyGpuNdArray_New();
             if (!%(oname)s)
             {
                 //error string already set
                 %(fail)s;
             }
-            if (CudaNdarray_alloc_contiguous(%(oname)s, %(nd)s, dims))
+            if (PyGpuNdArray_alloc_contiguous(%(oname)s, PyGpuNdArray_NDIM(%(iname)s), dims))
             {
                 //error string already set
                 Py_DECREF(%(oname)s);
@@ -780,8 +873,10 @@ nd_collapse_[i]=0;
         Py_XDECREF(%(oname)s);
         %(oname)s = %(iname)s;
         Py_INCREF(%(oname)s);
-        for (int i = 0; (i< %(nd)s) && (%(oname)s); ++i) {
-            if (dims[i] != CudaNdarray_HOST_DIMS(%(oname)s)[i])
+        // TODO: The output is the same as the input, so this for is
+        // not needed!
+        for (int i = 0; (i< PyGpuNdArray_NDIM(%(oname)s)) && (%(oname)s); ++i) {
+            if (dims[i] != PyGpuNdArray_DIMS(%(oname)s)[i])
             {
                 Py_DECREF(%(oname)s);
                 %(oname)s = NULL;
@@ -791,20 +886,25 @@ nd_collapse_[i]=0;
         //std::cerr << "ELEMWISE NEW %(oname)s nd" << %(oname)s->nd << "\\n";
         //std::cerr << "ELEMWISE NEW %(oname)s data" << %(oname)s->devdata << "\\n";
         """ % locals()
-
+        tmp_onames = outputs[0]
         print >> sio, """
         {
             //new block so that failure gotos don't skip over variable initialization
-            //std::cerr << "calling callkernel\\n";
-            if (callkernel_%(nodename)s(1, 0, dims
+            int numEls = 1;
+            for(int i = 0; i < PyGpuNdArray_NDIM(%(tmp_onames)s); ++i)
+              numEls *= dims[i];
+            std::cerr << "calling callkernel\\n";
+            if (callkernel_%(nodename)s(numEls, 0, dims
             """ % locals()
-        for iname in inputs:
+        for iname, inode in zip(inputs, ninputs):
+            idtype = dtype_to_ctype(inode[0].dtype)
             print >> sio, """
-                        , CudaNdarray_DEV_DATA(%(iname)s), CudaNdarray_HOST_STRIDES(%(iname)s)
+                        , (%(idtype)s*)PyGpuNdArray_DATA(%(iname)s), PyGpuNdArray_STRIDES(%(iname)s)
             """ % locals()
-        for oname in outputs:
+        for oname, onode in zip(outputs, noutputs):
+            odtype = dtype_to_ctype(onode[0].dtype)
             print >> sio, """
-                        , CudaNdarray_DEV_DATA(%(oname)s), CudaNdarray_HOST_STRIDES(%(oname)s)
+                        , (%(odtype)s*)PyGpuNdArray_DATA(%(oname)s), PyGpuNdArray_STRIDES(%(oname)s)
             """ % locals()
         print >> sio, """
                         ))
@@ -819,9 +919,7 @@ nd_collapse_[i]=0;
         print >> sio, """
                 %(fail)s;
             }
-            else // no error
-            {
-            }
+            //else no error
         }
         //std::cerr << "C_CODE %(opname)s END\\n";
         """ % locals()
@@ -1904,3 +2002,10 @@ class MyGpuNdArray():
             fct.param_set(*args)
             fct.launch_grid(*grid)
         return out
+
+
+if __name__ == "__main__":
+    if _CL_MODE:
+        print ElemwiseAlgo.pygpu_language_copy_opencl("float32")
+    else:
+        print ElemwiseAlgo.pygpu_language_copy_cuda("float32")

@@ -94,6 +94,7 @@ setup(name='compyte',
       ext_modules=[Extension('pygpu_ndarray',
                              define_macros=[('OFFSET', '1'), ('WITH_OPENCL', '')],
                              sources=['pygpu_language_opencl.cpp',
+                                      #'pygpu_language_opencl_gen.cpp',
                                       'pygpu_ndarray.cpp'],
                              **libcl_args)
                    ]

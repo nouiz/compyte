@@ -17,7 +17,7 @@ PYTHON_INCLUDE=-I$(shell python -c "import distutils.sysconfig;print distutils.s
 INCLUDES=${CUDA_INCLUDE} ${PYTHON_INCLUDE}
 CUDA_FLAGS=-Xlinker -rpath,${CUDA_ROOT}/lib64 -Xlinker -rpath,${CUDA_ROOT}/lib
 
-pygpu_language_cuda.o: pygpu_language_cuda.cu pygpu_language.h
+pygpu_language_cuda.o: pygpu_language_cuda.cu pygpu_language.h pygpu_language_cuda_copy.cu
 	nvcc -c ${CFLAGS} -m64 -Xcompiler -fPIC,-m64 ${CUDA_FLAGS} ${INCLUDES} ${BINDIR} -o $@ $<
 
 pygpu_ndarray.so: pygpu_ndarray.cpp pygpu_ndarray.h pygpu_language_cuda.o pygpu_ndarray_object.h

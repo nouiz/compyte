@@ -1,6 +1,6 @@
 #include <pygpu_ndarray_object.h>
 #include <pygpu_language.h>
-
+#include "pygpu_language_cuda_copy.cu"
 #include <cublas.h>
 
 #ifdef __DEVICE_EMULATION__
@@ -213,6 +213,7 @@ PyGpuNdArray_CopyFromPyGpuNdArray(PyGpuNdArrayObject * self, PyGpuNdArrayObject 
         size_source *= (unsigned int) PyGpuNdArray_DIMS(other)[i];
     }
     if (0 == size) {
+        DPRINTF("PyGpuNdArray_CopyFromPyGpuNdArray end size==0 nd=%d\n", PyGpuNdArray_NDIM(self));
         return 0; //nothing to copy, we're done.
     }
 
@@ -252,6 +253,9 @@ PyGpuNdArray_CopyFromPyGpuNdArray(PyGpuNdArrayObject * self, PyGpuNdArrayObject 
 	DPRINTF("PyGpuNdArray_CopyFromPyGpuNdArray cublasDcopy end\n");
         return 0;
     }
+
+    return PyGpuNdArray_CopyFromPyGpuNdArray2(self, other, unbroadcast);
+
 
     //TODO: rewrite these copy operations to be more efficient
     //      See, for example the transpose example in the cuda_sdk.
