@@ -183,7 +183,7 @@ int GpuArray_rgemm(cb_transpose transA, cb_transpose transB, double alpha, GpuAr
       Bp = &copyB;
     }
   }
-  if (!GpuArray_ISONESEGMENT(C)) {
+  if (!GpuArray_ISONESEGMENT(C) && C->dimensions[0] != 0 && C->dimensions[1] != 0) {
     err = GA_VALUE_ERROR;
     goto cleanup;
   }
@@ -195,8 +195,12 @@ int GpuArray_rgemm(cb_transpose transA, cb_transpose transB, double alpha, GpuAr
     o = cb_c;
     ldc = (Cp->dimensions[1] > 1) ? Cp->dimensions[1] : 1;
   } else {
-    err = GA_VALUE_ERROR;
-    goto cleanup;
+    if (Cp->dimensions[0] != 0 && Cp->dimensions[1] != 0) {
+      err = GA_VALUE_ERROR;
+      goto cleanup;
+    }
+    o = cb_c;
+    ldc = (Cp->dimensions[1] > 1) ? Cp->dimensions[1] : 1;
   }
   if (Ap->flags & GA_F_CONTIGUOUS) {
     lda = (Ap->dimensions[0] > 1) ? Ap->dimensions[0] : 1;
