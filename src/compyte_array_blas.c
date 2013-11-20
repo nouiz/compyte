@@ -78,10 +78,10 @@ int GpuArray_rgemv(cb_transpose transA, double alpha, GpuArray *A, GpuArray *X, 
   
   if (Ap->flags & GA_F_CONTIGUOUS) {
     o = cb_fortran;
-    lda = Ap->dimensions[0];
+    lda = (Ap->dimensions[0] > 1) ? Ap->dimensions[0] : 1;
   } else if (Ap->flags & GA_C_CONTIGUOUS) {
     o = cb_c;
-    lda = Ap->dimensions[1];
+    lda = (Ap->dimensions[1] > 1) ? Ap->dimensions[1] : 1;
   } else {
     /* Might be worth looking at making degenerate matrices (1xn) work here. */
     err = GA_VALUE_ERROR;
@@ -188,19 +188,18 @@ int GpuArray_rgemm(cb_transpose transA, cb_transpose transB, double alpha, GpuAr
     goto cleanup;
   }
 
-  
   if (Cp->flags & GA_F_CONTIGUOUS) {
     o = cb_fortran;
-    ldc = Cp->dimensions[0];
+    ldc = (Cp->dimensions[0] > 1) ? Cp->dimensions[0] : 1;
   } else if (Cp->flags & GA_C_CONTIGUOUS) {
     o = cb_c;
-    ldc = Cp->dimensions[1];
+    ldc = (Cp->dimensions[1] > 1) ? Cp->dimensions[1] : 1;
   } else {
     err = GA_VALUE_ERROR;
     goto cleanup;
   }
   if (Ap->flags & GA_F_CONTIGUOUS) {
-    lda = Ap->dimensions[0];
+    lda = (Ap->dimensions[0] > 1) ? Ap->dimensions[0] : 1;
     if (o == cb_c) {
       if (transA == cb_no_trans)
         transA = cb_trans;
@@ -208,7 +207,7 @@ int GpuArray_rgemm(cb_transpose transA, cb_transpose transB, double alpha, GpuAr
         transA = cb_no_trans;
     }
   } else if (Ap->flags & GA_C_CONTIGUOUS) {
-    lda = Ap->dimensions[1];
+    lda = (Ap->dimensions[1] > 1) ? Ap->dimensions[1] : 1;
     if (o == cb_fortran) {
       if (transA == cb_no_trans)
         transA = cb_trans;
@@ -220,7 +219,7 @@ int GpuArray_rgemm(cb_transpose transA, cb_transpose transB, double alpha, GpuAr
     goto cleanup;
   }
   if (Bp->flags & GA_F_CONTIGUOUS) {
-    ldb = Bp->dimensions[0];
+    ldb = (Bp->dimensions[0] > 1) ? Bp->dimensions[0] : 1;
     if (o == cb_c) {
       if (transB == cb_no_trans)
         transB = cb_trans;
@@ -228,7 +227,7 @@ int GpuArray_rgemm(cb_transpose transA, cb_transpose transB, double alpha, GpuAr
         transB = cb_no_trans;
     }
   } else if (Bp->flags & GA_C_CONTIGUOUS) {
-    ldb = Bp->dimensions[1];
+    ldb = (Bp->dimensions[1] > 1) ? Bp->dimensions[1] : 1;
     if (o == cb_fortran) {
       if (transB == cb_no_trans)
         transB = cb_trans;
