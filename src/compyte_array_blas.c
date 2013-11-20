@@ -6,8 +6,8 @@
 #include "compyte/util.h"
 #include "compyte/error.h"
 
-int GpuArray_rgemv(cb_transpose transA, double alpha, GpuArray *A, GpuArray *X, double beta, GpuArray *Y,
-                         int nocopy) {
+int GpuArray_rgemv(cb_transpose transA, const double alpha, GpuArray *A, GpuArray *X, const double beta, GpuArray *Y,
+		   const int nocopy) {
   GpuArray *Ap = A;
   GpuArray copyA;
   GpuArray *Xp = X;
@@ -112,8 +112,9 @@ int GpuArray_rgemv(cb_transpose transA, double alpha, GpuArray *A, GpuArray *X, 
     GpuArray_clear(&copyX);
   return err;
 }
-int GpuArray_rgemm(cb_transpose transA, cb_transpose transB, double alpha, GpuArray *A, GpuArray *B, double beta, GpuArray *C,
-                         int nocopy) {
+int GpuArray_rgemm(cb_transpose transA, cb_transpose transB, const double alpha, GpuArray *A, GpuArray *B,
+                   const double beta, GpuArray *C,
+		   const int nocopy) {
   GpuArray *Ap = A;
   GpuArray copyA;
   GpuArray *Bp = B;

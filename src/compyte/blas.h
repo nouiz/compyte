@@ -6,11 +6,11 @@
 #include <compyte/buffer_blas.h>
 #include <compyte/array.h>
 
-COMPYTE_PUBLIC int GpuArray_rgemv(cb_transpose transA, double alpha, GpuArray *A, GpuArray *X, double beta, GpuArray *Y,
+COMPYTE_PUBLIC int GpuArray_rgemv(cb_transpose transA, const double alpha, GpuArray *A, GpuArray *X, const double beta, GpuArray *Y,
                                         int nocopy);
 #define GpuArray_sgemv GpuArray_rgemv
 #define GpuArray_dgemv GpuArray_rgemv
-COMPYTE_PUBLIC int GpuArray_rgemm(cb_transpose transA, cb_transpose transB, double alpha, GpuArray *A, GpuArray *B, double beta, GpuArray *C,
+COMPYTE_PUBLIC int GpuArray_rgemm(cb_transpose transA, cb_transpose transB, const double alpha, GpuArray *A, GpuArray *B, const double beta, GpuArray *C,
                                         int nocopy);
 #define GpuArray_sgemm GpuArray_rgemm
 #define GpuArray_dgemm GpuArray_rgemm
