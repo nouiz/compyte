@@ -13,8 +13,9 @@ except ImportError, e:
 
 import pygpu.blas as gblas
 
+
 def test_gemv():
-    for shape in [(100, 128), (128, 50)]:
+    for shape in [(100, 128), (128, 50), (0, 10), (0, 0), (10, 0)]:
         for order in ['f', 'c']:
             for trans in [False, True]:
                 for offseted_i in [True, False]:
@@ -35,7 +36,7 @@ def test_gemv():
 
 @guard_devsup
 def gemv(shp, dtype, order, trans, offseted_i, sliced,
-          overwrite, init_y, alpha=1.0, beta=0.0):
+         overwrite, init_y, alpha=1.0, beta=0.0):
     cA, gA = gen_gpuarray(shp, dtype, order=order, offseted_inner=offseted_i,
                           sliced=sliced, ctx=context)
     if trans:
@@ -51,7 +52,14 @@ def gemv(shp, dtype, order, trans, offseted_i, sliced,
     else:
         cY, gY = None, None
 
-    if dtype == 'float32':
+    if shp[0] == 0 or shp[1] == 0:
+        #scipy fblas don't like empty input
+        if trans:
+            cA = cA.T
+        cr = alpha * numpy.dot(cA, cX)
+        if cY is not None:
+            cr += beta * cY
+    elif dtype == 'float32':
         cr = fblas.sgemv(alpha, cA, cX, beta, cY, trans=trans,
                          overwrite_y=overwrite)
     else:
@@ -64,7 +72,11 @@ def gemv(shp, dtype, order, trans, offseted_i, sliced,
 
 
 def test_gemm():
-    for m, n, k in [(48, 15, 32), (15, 32, 48)]:
+    for m, n, k in [(48, 15, 32), (15, 32, 48),
+                    (0, 32, 48), (15, 0, 48), (15, 32, 0),
+                    (0, 0, 48), (15, 0, 0), (0, 32, 0),
+                    (0, 0, 0)
+                ]:
         for order in [('f', 'f', 'f'), ('c', 'c', 'c'),
                       ('f', 'f', 'c'), ('f', 'c', 'f'),
                       ('f', 'c', 'c'), ('c', 'f', 'f'),
@@ -109,8 +121,16 @@ def gemm(m, n, k, dtype, order, trans, offseted_o, sliced, overwrite,
         cC, gC = gen_gpuarray((m,n), dtype, order=order[2], ctx=context)
     else:
         cC, gC = None, None
-
-    if dtype == 'float32':
+    if k == 0 or m == 0 or n == 0:
+        #scipy fblas don't like empty input
+        if trans[0]:
+            cA = cA.T
+        if trans[1]:
+            cB = cB.T
+        cr = alpha * numpy.dot(cA, cB)
+        if cC:
+            cr += beta * cC
+    elif dtype == 'float32':
         cr = fblas.sgemm(alpha, cA, cB, beta, cC, trans_a=trans[0],
                          trans_b=trans[1], overwrite_c=overwrite)
     else:
