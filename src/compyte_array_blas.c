@@ -100,11 +100,15 @@ int GpuArray_rgemv(cb_transpose transA, const double alpha, GpuArray *A, GpuArra
   if (err != GA_NO_ERROR)
     goto cleanup;
 
-  if (Ap->typecode == GA_FLOAT)
+  if (Ap->dimensions[0] != 0 && Ap->dimensions[1] == 0) {
+    //I don't know why but this case return the wrong value. So we return an error.
+    err = GA_BLAS_ERROR;
+    goto cleanup;
+  } else if (Ap->typecode == GA_FLOAT){
     err = blas->sgemv(o, transA, m, n, (float)alpha, Ap->data, Ap->offset / elsize, lda, Xp->data, Xp->offset / elsize, Xp->strides[0] / elsize, (float)beta, Yp->data, Yp->offset / elsize, Yp->strides[0] / elsize);
-  else
+  } else {
     err = blas->dgemv(o, transA, m, n, (double)alpha, Ap->data, Ap->offset / elsize, lda, Xp->data, Xp->offset / elsize, Xp->strides[0] / elsize, (double)beta, Yp->data, Yp->offset / elsize, Yp->strides[0] / elsize);
-
+  }
  cleanup:
   if (Ap == &copyA)
     GpuArray_clear(&copyA);
