@@ -100,10 +100,10 @@ int GpuArray_rgemv(cb_transpose transA, const double alpha, GpuArray *A, GpuArra
   if (err != GA_NO_ERROR)
     goto cleanup;
 
-  if (Ap->dimensions[0] != 0 && Ap->dimensions[1] == 0) {
-    //I don't know why but this case return the wrong value. So we return an error.
-    err = GA_BLAS_ERROR;
-    goto cleanup;
+  if ((Ap->dimensions[0] == 0 || Ap->dimensions[1] == 0) && beta == 0) {
+    //This is needed as some version of CUBLAS don't set to 0 the output
+    //nvcc version: V5.5.0, NVIDIA-SMI: 5.319.49, Driver Version: 319.49
+    GpuArray_memset(Yp, 0);
   } else if (Ap->typecode == GA_FLOAT){
     err = blas->sgemv(o, transA, m, n, (float)alpha, Ap->data, Ap->offset / elsize, lda, Xp->data, Xp->offset / elsize, Xp->strides[0] / elsize, (float)beta, Yp->data, Yp->offset / elsize, Yp->strides[0] / elsize);
   } else {
